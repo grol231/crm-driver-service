@@ -1,8 +1,13 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.21-bullseye AS builder
 
-# Install git and ca-certificates (needed to be able to call HTTPS)
-RUN apk --no-cache add ca-certificates git tzdata
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    git \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /build
 
 # Copy go.mod and go.sum for dependency download
@@ -20,10 +25,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     ./cmd/server
 
 # Final stage
-FROM alpine:latest
+FROM debian:bullseye-slim
 
-# Install ca-certificates for HTTPS calls
-RUN apk --no-cache add ca-certificates tzdata
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    tzdata \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -34,8 +43,8 @@ COPY --from=builder /build/driver-service .
 COPY --from=builder /build/internal/infrastructure/database/migrations ./internal/infrastructure/database/migrations
 
 # Create non-root user
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
+RUN groupadd -g 1001 appgroup && \
+    useradd -u 1001 -g appgroup -s /bin/sh -m appuser
 
 # Change ownership
 RUN chown -R appuser:appgroup /app
@@ -48,7 +57,7 @@ EXPOSE 8001 9001 9002
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8001/health || exit 1
+    CMD curl -f http://localhost:8001/health || exit 1
 
 # Run the binary
 CMD ["./driver-service"]

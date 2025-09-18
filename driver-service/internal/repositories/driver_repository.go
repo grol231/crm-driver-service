@@ -11,7 +11,6 @@ import (
 	"driver-service/internal/infrastructure/database"
 
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
 	"go.uber.org/zap"
 )
 
@@ -172,7 +171,7 @@ func (r *driverRepository) GetByLicenseNumber(ctx context.Context, licenseNumber
 // Update обновляет данные водителя
 func (r *driverRepository) Update(ctx context.Context, driver *entities.Driver) error {
 	driver.UpdatedAt = time.Now()
-	
+
 	query := `
 		UPDATE drivers SET
 			phone = :phone, email = :email, first_name = :first_name,
@@ -451,7 +450,7 @@ func (r *driverRepository) buildListQuery(filters *entities.DriverFilters, isCou
 
 	// Базовый запрос
 	baseQuery := "FROM drivers WHERE deleted_at IS NULL"
-	
+
 	var selectClause string
 	if isCount {
 		selectClause = "SELECT COUNT(*) "

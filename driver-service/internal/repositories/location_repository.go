@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 	"driver-service/internal/domain/entities"
@@ -97,7 +96,7 @@ func (r *locationRepository) GetByDriverIDInTimeRange(ctx context.Context, drive
 
 func (r *locationRepository) List(ctx context.Context, filters *entities.LocationFilters) ([]*entities.DriverLocation, error) {
 	query, args := r.buildListQuery(filters)
-	
+
 	var locations []*entities.DriverLocation
 	err := r.db.SelectContext(ctx, &locations, query, args...)
 	return locations, err

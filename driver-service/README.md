@@ -363,16 +363,43 @@ driver-service/
 ### Тестирование
 
 ```bash
-# Запуск всех тестов
-go test ./...
+# Все тесты (рекомендуется)
+./scripts/run-tests.sh
 
-# Тестирование с покрытием
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
+# Unit тесты
+make test
 
 # Интеграционные тесты
-go test -tags=integration ./...
+make test-integration
+
+# Performance тесты
+make test-performance
+
+# End-to-end тесты
+make test-e2e
+
+# Тестирование с покрытием
+make test-coverage
+
+# Быстрые тесты (без performance)
+make test-quick
+
+# Тесты с race detection
+make test-race
 ```
+
+#### Типы тестов
+
+- **Unit Tests**: Тестируют отдельные компоненты (entities, services)
+- **Integration Tests**: Тестируют взаимодействие с БД и API
+- **Performance Tests**: Нагрузочное тестирование и бенчмарки
+- **E2E Tests**: Полные пользовательские сценарии
+
+#### Тестовое покрытие
+
+- **Минимальное покрытие**: 70%
+- **Текущее покрытие**: Проверяется в CI/CD
+- **Отчет**: `coverage.html`
 
 ### Линтинг
 
