@@ -1,0 +1,105 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+  build-tags:
+    - integration
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    - varcheck
+    - structcheck
+    - misspell
+    - gocyclo
+    - gofmt
+    - goimports
+    - golint
+    - gosec
+    - unconvert
+    - dupl
+    - goconst
+    - gocognit
+    - prealloc
+    - bodyclose
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    - exportloopref
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  
+  gocognit:
+    min-complexity: 20
+  
+  dupl:
+    threshold: 100
+  
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  
+  misspell:
+    locale: US
+  
+  golint:
+    min-confidence: 0.8
+  
+  gosec:
+    excludes:
+      - G104 # Audit errors not checked
+      - G204 # Subprocess launched with variable
+  
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - goconst
+    
+    # Exclude some linters from running on fixtures
+    - path: tests/fixtures/
+      linters:
+        - dupl
+        - goconst
+    
+    # Exclude some linters from running on migrations
+    - path: migrations/
+      linters:
+        - all
+    
+    # Exclude specific issues
+    - text: "weak cryptographic primitive"
+      linters:
+        - gosec
+    
+    - text: "Use of weak random number generator"
+      linters:
+        - gosec
+  
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true

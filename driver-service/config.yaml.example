@@ -1,0 +1,70 @@
+server:
+  http_port: 8001
+  grpc_port: 9001
+  metrics_port: 9002
+  timeout: 30s
+  environment: development
+
+database:
+  host: localhost
+  port: 5432
+  user: driver_service
+  password: password
+  database: driver_service
+  ssl_mode: disable
+  max_open_conns: 25
+  max_idle_conns: 25
+  conn_max_lifetime: 5m
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  database: 0
+  max_retries: 3
+  pool_size: 10
+  idle_timeout: 5m
+
+nats:
+  url: nats://localhost:4222
+  cluster_id: driver-service-cluster
+  client_id: driver-service
+  connect_timeout: 30s
+  reconnect_delay: 2s
+  max_reconnect: -1
+  ping_interval: 20s
+  max_pings_out: 2
+
+logger:
+  level: info
+  format: json
+  output_path: stdout
+
+external:
+  gibdd_api:
+    base_url: https://api.gibdd.ru
+    api_key: your_api_key_here
+    timeout: 30s
+  
+  maps_api:
+    base_url: https://api.maps.example.com
+    api_key: your_maps_api_key_here
+    timeout: 10s
+  
+  sms_api:
+    base_url: https://api.sms.example.com
+    api_key: your_sms_api_key_here
+    from: "TaxiService"
+    timeout: 15s
+  
+  s3:
+    endpoint: https://s3.amazonaws.com
+    access_key_id: your_access_key
+    secret_access_key: your_secret_key
+    bucket_name: taxi-documents
+    region: us-east-1
+    use_ssl: true
+
+metrics:
+  enabled: true
+  path: /metrics
