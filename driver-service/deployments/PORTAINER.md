@@ -168,6 +168,24 @@ volumes:
 
 ## Troubleshooting
 
+### Проблема: "config not found: prometheus_config"
+
+**Решение:** Используйте `docker-compose.swarm-simple.yml` вместо `docker-compose.swarm.yml`
+
+```bash
+# Используйте упрощенную версию
+docker stack deploy -c deployments/docker/docker-compose.swarm-simple.yml driver-service
+```
+
+### Проблема: "Since --detach=false was not specified"
+
+**Решение:** Это предупреждение, не ошибка. Для подавления:
+
+```bash
+# Добавьте флаг --detach
+docker stack deploy --detach -c docker-compose.swarm-simple.yml driver-service
+```
+
 ### Проблема: Сервис не запускается
 
 1. **Проверьте логи в Portainer:**
@@ -175,7 +193,7 @@ volumes:
 
 2. **Проверьте образ:**
    ```bash
-   docker pull taxi-crm/driver-service:latest
+   docker pull registry.starline.ru/crm-driver-service:latest
    ```
 
 3. **Проверьте сеть:**
