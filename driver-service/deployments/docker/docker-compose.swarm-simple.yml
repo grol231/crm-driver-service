@@ -110,8 +110,8 @@ services:
   nats:
     image: nats:2.10-alpine
     ports:
-      - "4222:4222"  # Client connections
-      - "8222:8222"  # HTTP management
+      - "14222:4222"  # Client connections
+      - "18222:8222"  # HTTP management
     command: ["-js", "-m", "8222"]
     volumes:
       - nats_data:/data

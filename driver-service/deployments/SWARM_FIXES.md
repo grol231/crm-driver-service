@@ -145,7 +145,14 @@ docker volume inspect driver-service_postgres_data
 ## ⚠️ **Важные замечания**
 
 1. **Образ должен быть доступен** в registry
-2. **Порты должны быть свободны** на всех нодах
+2. **Порты должны быть свободны** на всех нодах:
+   - **8001** - HTTP API
+   - **9001** - gRPC API  
+   - **9002** - Metrics
+   - **5434** - PostgreSQL
+   - **6381** - Redis
+   - **14222** - NATS Client connections
+   - **18222** - NATS HTTP management
 3. **Volumes создаются автоматически** при первом запуске
 4. **Для production** используйте внешние volumes и secrets
 5. **PostgreSQL размещается только на manager нодах** (constraint: `node.role == manager`)
