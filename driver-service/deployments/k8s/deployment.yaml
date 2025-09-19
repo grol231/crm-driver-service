@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: driver-service
+  labels:
+    app: driver-service
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: driver-service
+  template:
+    metadata:
+      labels:
+        app: driver-service
+        version: v1
+    spec:
+      containers:
+      - name: driver-service
+        image: taxi-crm/driver-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8001
+          name: http
+          protocol: TCP
+        - containerPort: 9001
+          name: grpc
+          protocol: TCP
+        - containerPort: 9002
+          name: metrics
+          protocol: TCP
+        env:
+        - name: DRIVER_SERVICE_DATABASE_HOST
+          value: "postgres-service"
+        - name: DRIVER_SERVICE_DATABASE_PORT
+          value: "5432"
+        - name: DRIVER_SERVICE_DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: driver-service-secrets
+              key: db-user
+        - name: DRIVER_SERVICE_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: driver-service-secrets
+              key: db-password
+        - name: DRIVER_SERVICE_DATABASE_DATABASE
+          value: "driver_service"
+        - name: DRIVER_SERVICE_REDIS_HOST
+          value: "redis-service"
+        - name: DRIVER_SERVICE_REDIS_PORT
+          value: "6379"
+        - name: DRIVER_SERVICE_NATS_URL
+          value: "nats://nats-service:4222"
+        - name: DRIVER_SERVICE_SERVER_ENVIRONMENT
+          value: "production"
+        - name: DRIVER_SERVICE_LOGGER_LEVEL
+          value: "info"
+        - name: DRIVER_SERVICE_LOGGER_FORMAT
+          value: "json"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: config-volume
+        configMap:
+          name: driver-service-config
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: driver-service
+  labels:
+    app: driver-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: http
+  - port: 9001
+    targetPort: 9001
+    protocol: TCP
+    name: grpc
+  - port: 9002
+    targetPort: 9002
+    protocol: TCP
+    name: metrics
+  selector:
+    app: driver-service
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: driver-service-config
+data:
+  config.yaml: |
+    server:
+      http_port: 8001
+      grpc_port: 9001
+      metrics_port: 9002
+      timeout: 30s
+      environment: production
+    database:
+      ssl_mode: require
+      max_open_conns: 25
+      max_idle_conns: 25
+      conn_max_lifetime: 5m
+    redis:
+      max_retries: 3
+      pool_size: 10
+      idle_timeout: 5m
+    logger:
+      level: info
+      format: json
+    metrics:
+      enabled: true
+      path: /metrics
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: driver-service-secrets
+type: Opaque
+data:
+  # Base64 encoded values
+  # echo -n "driver_service" | base64
+  db-user: ZHJpdmVyX3NlcnZpY2U=
+  # echo -n "your_secure_password_here" | base64
+  db-password: eW91cl9zZWN1cmVfcGFzc3dvcmRfaGVyZQ==

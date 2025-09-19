@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  driver-service:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+    container_name: driver-service
+    ports:
+      - "8001:8001"  # HTTP API
+      - "9001:9001"  # gRPC API
+      - "9002:9002"  # Metrics
+    environment:
+      - DRIVER_SERVICE_DATABASE_HOST=postgres
+      - DRIVER_SERVICE_DATABASE_PORT=5432
+      - DRIVER_SERVICE_DATABASE_USER=driver_service
+      - DRIVER_SERVICE_DATABASE_PASSWORD=driver_service_password
+      - DRIVER_SERVICE_DATABASE_DATABASE=driver_service
+      - DRIVER_SERVICE_REDIS_HOST=redis
+      - DRIVER_SERVICE_REDIS_PORT=6379
+      - DRIVER_SERVICE_NATS_URL=nats://nats:4222
+      - DRIVER_SERVICE_SERVER_ENVIRONMENT=development
+      - DRIVER_SERVICE_LOGGER_LEVEL=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - driver-service-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: driver-service-postgres
+    environment:
+      POSTGRES_DB: driver_service
+      POSTGRES_USER: driver_service
+      POSTGRES_PASSWORD: driver_service_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U driver_service -d driver_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - driver-service-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: driver-service-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - driver-service-network
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: driver-service-nats
+    ports:
+      - "4222:4222"  # Client connections
+      - "8222:8222"  # HTTP management
+    command: ["-js", "-m", "8222"]
+    volumes:
+      - nats_data:/data
+    networks:
+      - driver-service-network
+
+  # Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: driver-service-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - driver-service-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: driver-service-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+    networks:
+      - driver-service-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  nats_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  driver-service-network:
+    driver: bridge
