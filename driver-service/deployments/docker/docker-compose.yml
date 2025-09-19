@@ -22,12 +22,9 @@ services:
       - DRIVER_SERVICE_SERVER_ENVIRONMENT=development
       - DRIVER_SERVICE_LOGGER_LEVEL=info
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      nats:
-        condition: service_started
+      - postgres
+      - redis
+      - nats
     restart: unless-stopped
     networks:
       - driver-service-network
@@ -41,7 +38,7 @@ services:
       POSTGRES_PASSWORD: driver_service_password
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
@@ -57,7 +54,7 @@ services:
     image: redis:7-alpine
     container_name: driver-service-redis
     ports:
-      - "6379:6379"
+      - "6381:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru

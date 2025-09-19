@@ -18,18 +18,20 @@ scrape_configs:
     scrape_interval: 30s
     scrape_timeout: 10s
 
-  - job_name: 'postgres-exporter'
-    static_configs:
-      - targets: ['postgres-exporter:9187']
-    scrape_interval: 30s
+  # For production, add postgres-exporter and redis-exporter services
+  # - job_name: 'postgres-exporter'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  #   scrape_interval: 30s
 
-  - job_name: 'redis-exporter'
-    static_configs:
-      - targets: ['redis-exporter:9121']
-    scrape_interval: 30s
+  # - job_name: 'redis-exporter'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #   scrape_interval: 30s
 
-  - job_name: 'nats-exporter'
-    static_configs:
-      - targets: ['nats:8222']
-    metrics_path: /varz
-    scrape_interval: 30s
+  # NATS metrics are in JSON format, not Prometheus format
+  # For production, use nats-exporter: https://github.com/nats-io/prometheus-nats-exporter
+  # - job_name: 'nats-exporter'
+  #   static_configs:
+  #     - targets: ['nats-exporter:7777']
+  #   scrape_interval: 30s

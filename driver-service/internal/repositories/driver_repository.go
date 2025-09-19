@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -62,7 +63,34 @@ func (r *driverRepository) Create(ctx context.Context, driver *entities.Driver) 
 			:created_at, :updated_at
 		)`
 
-	_, err := r.db.NamedExecContext(ctx, query, driver)
+	// Сериализуем metadata в JSON
+	metadataBytes, err := json.Marshal(driver.Metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	// Создаем параметры для запроса
+	params := map[string]interface{}{
+		"id":              driver.ID,
+		"phone":           driver.Phone,
+		"email":           driver.Email,
+		"first_name":      driver.FirstName,
+		"last_name":       driver.LastName,
+		"middle_name":     driver.MiddleName,
+		"birth_date":      driver.BirthDate,
+		"passport_series": driver.PassportSeries,
+		"passport_number": driver.PassportNumber,
+		"license_number":  driver.LicenseNumber,
+		"license_expiry":  driver.LicenseExpiry,
+		"status":          driver.Status,
+		"current_rating":  driver.CurrentRating,
+		"total_trips":     driver.TotalTrips,
+		"metadata":        string(metadataBytes),
+		"created_at":      driver.CreatedAt,
+		"updated_at":      driver.UpdatedAt,
+	}
+
+	_, err = r.db.NamedExecContext(ctx, query, params)
 	if err != nil {
 		r.logger.Error("Failed to create driver",
 			zap.Error(err),

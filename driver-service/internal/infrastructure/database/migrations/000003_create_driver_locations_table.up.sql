@@ -23,8 +23,9 @@ CREATE INDEX idx_driver_locations_created_at ON driver_locations(created_at DESC
 CREATE INDEX idx_driver_locations_spatial ON driver_locations USING GIST(point(longitude, latitude));
 
 -- Create partial index for recent locations (last 24 hours)
+-- Note: Using a static timestamp instead of NOW() for immutable index
 CREATE INDEX idx_driver_locations_recent ON driver_locations(driver_id, recorded_at) 
-    WHERE recorded_at > NOW() - INTERVAL '24 hours';
+    WHERE recorded_at > CURRENT_DATE - INTERVAL '1 day';
 
 -- Add check constraints for valid coordinates
 ALTER TABLE driver_locations ADD CONSTRAINT check_driver_locations_latitude 
