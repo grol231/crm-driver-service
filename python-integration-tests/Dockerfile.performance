@@ -1,0 +1,33 @@
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install performance testing dependencies
+RUN pip install --no-cache-dir \
+    locust==2.17.0 \
+    requests==2.31.0 \
+    faker==20.1.0
+
+# Copy performance test files
+COPY performance/ ./performance/
+COPY utils/ ./utils/
+COPY config.py .
+
+# Create results directory
+RUN mkdir -p test-results
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Expose Locust web interface port
+EXPOSE 8089
+
+# Default command
+CMD ["locust", "-f", "performance/locustfile.py", "--host=http://localhost:8001"]
