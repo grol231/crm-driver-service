@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  # PostgreSQL test database
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: driver-service-rust-test-postgres
+    environment:
+      POSTGRES_DB: driver_service_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d driver_service_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  # Redis test cache
+  redis-test:
+    image: redis:7-alpine
+    container_name: driver-service-rust-test-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_test_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  # NATS test message broker
+  nats-test:
+    image: nats:2.10-alpine
+    container_name: driver-service-rust-test-nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  # Go Driver Service (for testing against)
+  driver-service:
+    build:
+      context: ../
+      dockerfile: deployments/docker/Dockerfile
+    container_name: driver-service-rust-test-go-app
+    environment:
+      - PORT=8001
+      - DB_HOST=postgres-test
+      - DB_PORT=5432
+      - DB_NAME=driver_service_test
+      - DB_USER=test_user
+      - DB_PASSWORD=test_password
+      - DB_SSL_MODE=disable
+      - REDIS_URL=redis://redis-test:6379
+      - NATS_URL=nats://nats-test:4222
+      - GIN_MODE=release
+      - LOG_LEVEL=info
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      nats-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Rust Integration Test Runner
+  rust-integration-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: driver-service-rust-integration-tests
+    environment:
+      - DRIVER_SERVICE_BASE_URL=http://driver-service:8001
+      - POSTGRES_HOST=postgres-test
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=driver_service_test
+      - POSTGRES_USER=test_user
+      - POSTGRES_PASSWORD=test_password
+      - REDIS_ENABLED=true
+      - REDIS_URL=redis://redis-test:6379
+      - NATS_ENABLED=true
+      - NATS_URL=nats://nats-test:4222
+      - PERFORMANCE_TESTS_ENABLED=true
+      - RUST_LOG=info,driver_service_integration_tests=debug
+    depends_on:
+      driver-service:
+        condition: service_healthy
+    volumes:
+      - ./test-results:/app/test-results
+    networks:
+      - test-network
+    profiles:
+      - test
+
+  # Database migration runner
+  migrate:
+    image: migrate/migrate:v4.16.2
+    container_name: driver-service-rust-test-migrate
+    volumes:
+      - ../internal/infrastructure/database/migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://test_user:test_password@postgres-test:5432/driver_service_test?sslmode=disable",
+      "up"
+    ]
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    networks:
+      - test-network
+    profiles:
+      - migration
+
+volumes:
+  postgres_test_data:
+    driver: local
+  redis_test_data:
+    driver: local
+
+networks:
+  test-network:
+    driver: bridge

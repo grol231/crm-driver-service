@@ -1,0 +1,475 @@
+name: Rust Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'driver-service/**'
+      - 'rust-integration-tests/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'driver-service/**'
+      - 'rust-integration-tests/**'
+  schedule:
+    # Run daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - api
+          - database
+          - events
+          - performance
+          - scenarios
+      performance_enabled:
+        description: 'Enable performance tests'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Check and lint Rust code
+  check:
+    name: Check and Lint
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy, rustfmt
+
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          rust-integration-tests/target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('rust-integration-tests/Cargo.lock') }}
+
+    - name: Check code formatting
+      run: |
+        cd rust-integration-tests
+        cargo fmt -- --check
+
+    - name: Run clippy
+      run: |
+        cd rust-integration-tests
+        cargo clippy -- -D warnings
+
+    - name: Check compilation
+      run: |
+        cd rust-integration-tests
+        cargo check --all-targets
+
+  # Build Go service and Rust tests
+  build:
+    name: Build Components
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: ${{ runner.os }}-go-${{ hashFiles('driver-service/go.sum') }}
+
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          rust-integration-tests/target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('rust-integration-tests/Cargo.lock') }}
+
+    - name: Build Go service
+      run: |
+        cd driver-service
+        go mod download
+        go build -v -o driver-service ./cmd/server
+
+    - name: Build Rust integration tests
+      run: |
+        cd rust-integration-tests
+        cargo build --release
+
+    - name: Upload Go binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: driver-service-binary
+        path: driver-service/driver-service
+
+    - name: Upload Rust test binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: integration-tests-binary
+        path: rust-integration-tests/target/release/test_runner
+
+  # Run integration tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      matrix:
+        test-mode: 
+          - api
+          - database
+          - scenarios
+        include:
+          - test-mode: api
+            performance: false
+          - test-mode: database  
+            performance: false
+          - test-mode: scenarios
+            performance: false
+      fail-fast: false
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: driver_service_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user -d driver_service_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      nats:
+        image: nats:2.10-alpine
+        ports:
+          - 4222:4222
+          - 8222:8222
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8222/healthz"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client redis-tools curl
+
+    - name: Download Go binary
+      uses: actions/download-artifact@v3
+      with:
+        name: driver-service-binary
+        path: ./
+
+    - name: Download Rust test binary
+      uses: actions/download-artifact@v3
+      with:
+        name: integration-tests-binary
+        path: ./
+
+    - name: Make binaries executable
+      run: |
+        chmod +x driver-service
+        chmod +x test_runner
+
+    - name: Setup database
+      run: |
+        cd rust-integration-tests
+        PGPASSWORD=test_password psql -h localhost -p 5433 -U test_user -d driver_service_test -f init-db.sql
+
+    - name: Run database migrations
+      run: |
+        cd driver-service
+        # Run migrations using the Go service or migration tool
+        # This assumes you have a migrate command or endpoint
+        echo "Database migrations would run here"
+
+    - name: Start Driver Service
+      run: |
+        export DB_HOST=localhost
+        export DB_PORT=5433
+        export DB_NAME=driver_service_test
+        export DB_USER=test_user
+        export DB_PASSWORD=test_password
+        export DB_SSL_MODE=disable
+        export REDIS_URL=redis://localhost:6380
+        export NATS_URL=nats://localhost:4222
+        export PORT=8001
+        export GIN_MODE=release
+        ./driver-service &
+        sleep 10
+
+    - name: Health check
+      run: |
+        curl -f http://localhost:8001/health || exit 1
+        echo "✓ Driver Service is healthy"
+
+    - name: Run integration tests
+      env:
+        DRIVER_SERVICE_BASE_URL: http://localhost:8001
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5433
+        POSTGRES_DB: driver_service_test
+        POSTGRES_USER: test_user
+        POSTGRES_PASSWORD: test_password
+        REDIS_ENABLED: true
+        REDIS_URL: redis://localhost:6380
+        NATS_ENABLED: true
+        NATS_URL: nats://localhost:4222
+        PERFORMANCE_TESTS_ENABLED: ${{ matrix.performance }}
+        RUST_LOG: info,driver_service_integration_tests=debug
+      run: |
+        ./test_runner --mode ${{ matrix.test-mode }} --output junit --timeout 300 > test-results-${{ matrix.test-mode }}.xml
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.test-mode }}
+        path: test-results-${{ matrix.test-mode }}.xml
+
+    - name: Publish test results
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      if: always()
+      with:
+        files: test-results-${{ matrix.test-mode }}.xml
+        check_name: "Integration Tests (${{ matrix.test-mode }})"
+
+  # Performance tests (separate job for longer timeout)
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event.inputs.performance_enabled == 'true' || github.event_name == 'schedule'
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: driver_service_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user -d driver_service_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download binaries
+      uses: actions/download-artifact@v3
+      with:
+        name: driver-service-binary
+        path: ./
+
+    - name: Download test binary
+      uses: actions/download-artifact@v3
+      with:
+        name: integration-tests-binary
+        path: ./
+
+    - name: Make binaries executable
+      run: |
+        chmod +x driver-service
+        chmod +x test_runner
+
+    - name: Setup database
+      run: |
+        cd rust-integration-tests
+        PGPASSWORD=test_password psql -h localhost -p 5433 -U test_user -d driver_service_test -f init-db.sql
+
+    - name: Start Driver Service
+      run: |
+        export DB_HOST=localhost
+        export DB_PORT=5433
+        export DB_NAME=driver_service_test
+        export DB_USER=test_user
+        export DB_PASSWORD=test_password
+        export DB_SSL_MODE=disable
+        export REDIS_URL=redis://localhost:6380
+        export PORT=8001
+        export GIN_MODE=release
+        ./driver-service &
+        sleep 10
+
+    - name: Run performance tests
+      env:
+        DRIVER_SERVICE_BASE_URL: http://localhost:8001
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5433
+        POSTGRES_DB: driver_service_test
+        POSTGRES_USER: test_user
+        POSTGRES_PASSWORD: test_password
+        REDIS_ENABLED: true
+        REDIS_URL: redis://localhost:6380
+        PERFORMANCE_TESTS_ENABLED: true
+        LOAD_TEST_USERS: 50
+        RUST_LOG: info
+      run: |
+        ./test_runner --mode performance --output json --timeout 900 > performance-results.json
+
+    - name: Upload performance results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: performance-results
+        path: performance-results.json
+
+  # Docker integration test
+  docker-tests:
+    name: Docker Integration
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build test environment
+      run: |
+        cd rust-integration-tests
+        docker-compose -f docker-compose.test.yml build
+
+    - name: Run Docker-based tests
+      run: |
+        cd rust-integration-tests
+        docker-compose -f docker-compose.test.yml up -d postgres-test redis-test nats-test
+        sleep 15
+        docker-compose -f docker-compose.test.yml --profile test run --rm rust-integration-tests integration-tests --mode api --timeout 300
+      timeout-minutes: 15
+
+    - name: Cleanup Docker resources
+      if: always()
+      run: |
+        cd rust-integration-tests
+        docker-compose -f docker-compose.test.yml down -v
+
+  # Security audit
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+
+    - name: Run security audit
+      run: |
+        cd rust-integration-tests
+        cargo audit
+
+  # Summary job
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [integration-tests, performance-tests, docker-tests, security]
+    if: always()
+    steps:
+    - name: Download all test results
+      uses: actions/download-artifact@v3
+
+    - name: Generate summary
+      run: |
+        echo "# Integration Test Results" > summary.md
+        echo "" >> summary.md
+        echo "## Test Status" >> summary.md
+        echo "- Integration Tests: ${{ needs.integration-tests.result }}" >> summary.md
+        echo "- Performance Tests: ${{ needs.performance-tests.result }}" >> summary.md
+        echo "- Docker Tests: ${{ needs.docker-tests.result }}" >> summary.md
+        echo "- Security Audit: ${{ needs.security.result }}" >> summary.md
+        
+        # Add more detailed analysis if test result files exist
+        if [ -d "test-results-api" ]; then
+          echo "" >> summary.md
+          echo "## API Test Results" >> summary.md
+          echo "Test results available in artifacts." >> summary.md
+        fi
+        
+        cat summary.md
+
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          if (fs.existsSync('summary.md')) {
+            const summary = fs.readFileSync('summary.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+          }
