@@ -9,6 +9,8 @@ import (
 	"driver-service/internal/config"
 	"driver-service/internal/interfaces/http/handlers"
 	"driver-service/internal/interfaces/http/middleware"
+	gqlhandler "driver-service/internal/interfaces/graphql"
+	"driver-service/internal/interfaces/graphql/resolver"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -28,6 +30,7 @@ func NewServer(
 	logger *zap.Logger,
 	driverHandler *handlers.DriverHandler,
 	locationHandler *handlers.LocationHandler,
+	graphqlResolver *resolver.Resolver,
 ) *Server {
 	// Настройка Gin
 	if cfg.Server.Environment == "production" {
@@ -76,6 +79,17 @@ func NewServer(
 	locations := api.Group("/locations")
 	{
 		locations.GET("/nearby", locationHandler.GetNearbyDrivers)
+	}
+
+	// GraphQL routes
+	if graphqlResolver != nil {
+		router.POST("/graphql", gqlhandler.GraphQLHandler(graphqlResolver, logger))
+		router.GET("/graphql", gqlhandler.GraphQLHandler(graphqlResolver, logger)) // для GET запросов
+		
+		// GraphQL Playground (только для development)
+		if cfg.Server.Environment != "production" {
+			router.GET("/playground", gqlhandler.PlaygroundHandler())
+		}
 	}
 
 	server := &Server{
