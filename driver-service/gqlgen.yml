@@ -1,0 +1,67 @@
+# GraphQL schema location
+schema:
+  - internal/interfaces/graphql/schema/*.graphql
+
+# GraphQL generated code output
+exec:
+  filename: internal/interfaces/graphql/generated/generated.go
+  package: generated
+
+# Model definitions
+model:
+  filename: internal/interfaces/graphql/generated/models_gen.go
+  package: generated
+
+# Resolvers directory
+resolver:
+  filename: internal/interfaces/graphql/generated/resolver.go
+  package: resolver
+  type: Resolver
+
+# Auto bind models from domain entities
+autobind:
+  - driver-service/internal/interfaces/graphql/model
+
+# Model overrides (map GraphQL types to Go types)
+models:
+  ID:
+    model:
+      - github.com/google/uuid.UUID
+  UUID:
+    model:
+      - github.com/google/uuid.UUID
+  Time:
+    model:
+      - time.Time
+  Metadata:
+    model:
+      - driver-service/internal/interfaces/graphql/model.Metadata
+  CriteriaScores:
+    model:
+      - driver-service/internal/interfaces/graphql/model.CriteriaScores
+  CriteriaAverages:
+    model:
+      - driver-service/internal/interfaces/graphql/model.CriteriaAverages
+
+# Skip generation for existing resolvers
+skip_validation: false
+
+# Federation support (if needed later)
+federation:
+  filename: internal/interfaces/graphql/generated/federation.go
+  package: generated
+
+# Disable introspection in production
+introspection: true
+
+# Complexity limits
+complexity:
+  maximum_depth: 10
+  node_count_limit: 1000
+  complexity_limit: 1000
+
+# Plugins
+plugins:
+  - name: federation
+  - name: resolvergen
+  - name: dataloader

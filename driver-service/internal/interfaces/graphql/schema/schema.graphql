@@ -1,0 +1,554 @@
+# GraphQL Schema для Driver Service
+
+scalar Time
+scalar UUID
+
+# Базовые типы
+enum Status {
+  REGISTERED
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+  AVAILABLE
+  ON_SHIFT
+  BUSY
+  INACTIVE
+  SUSPENDED
+  BLOCKED
+}
+
+enum ShiftStatus {
+  ACTIVE
+  COMPLETED
+  SUSPENDED
+  CANCELLED
+}
+
+enum DocumentType {
+  DRIVER_LICENSE
+  MEDICAL_CERTIFICATE
+  VEHICLE_REGISTRATION
+  INSURANCE
+  PASSPORT
+  TAXI_PERMIT
+  WORK_PERMIT
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+  PROCESSING
+}
+
+enum RatingType {
+  CUSTOMER
+  SYSTEM
+  ADMIN
+  PEER
+  AUTOMATIC
+}
+
+# Основные типы
+type Driver {
+  id: UUID!
+  phone: String!
+  email: String!
+  firstName: String!
+  lastName: String!
+  middleName: String
+  fullName: String!
+  birthDate: Time!
+  passportSeries: String!
+  passportNumber: String!
+  licenseNumber: String!
+  licenseExpiry: Time!
+  status: Status!
+  currentRating: Float!
+  totalTrips: Int!
+  metadata: Metadata
+  createdAt: Time!
+  updatedAt: Time!
+  
+  # Связанные объекты
+  documents: [DriverDocument!]!
+  currentLocation: DriverLocation
+  locationHistory(limit: Int, offset: Int): [DriverLocation!]!
+  ratings(limit: Int, offset: Int): [DriverRating!]!
+  ratingStats: RatingStats
+  activeShift: DriverShift
+  shifts(limit: Int, offset: Int): [DriverShift!]!
+  
+  # Вычисляемые поля
+  isActive: Boolean!
+  canReceiveOrders: Boolean!
+  isLicenseExpired: Boolean!
+}
+
+type DriverLocation {
+  id: UUID!
+  driverId: UUID!
+  latitude: Float!
+  longitude: Float!
+  altitude: Float
+  accuracy: Float
+  speed: Float
+  bearing: Float
+  address: String
+  recordedAt: Time!
+  createdAt: Time!
+  
+  # Связанные объекты
+  driver: Driver!
+  
+  # Вычисляемые поля
+  isHighAccuracy: Boolean!
+  isValidLocation: Boolean!
+}
+
+type DriverRating {
+  id: UUID!
+  driverId: UUID!
+  orderId: UUID
+  customerId: UUID
+  rating: Int!
+  comment: String
+  ratingType: RatingType!
+  criteriaScores: CriteriaScores
+  isVerified: Boolean!
+  isAnonymous: Boolean!
+  createdAt: Time!
+  updatedAt: Time!
+  
+  # Связанные объекты
+  driver: Driver!
+  
+  # Вычисляемые поля
+  isValid: Boolean!
+  overallScore: Float!
+}
+
+type DriverShift {
+  id: UUID!
+  driverId: UUID!
+  vehicleId: UUID
+  status: ShiftStatus!
+  startTime: Time!
+  endTime: Time
+  startLocation: Location
+  endLocation: Location
+  totalTrips: Int!
+  totalDistance: Float!
+  totalEarnings: Float!
+  fuelConsumed: Float
+  createdAt: Time!
+  updatedAt: Time!
+  
+  # Связанные объекты
+  driver: Driver!
+  
+  # Вычисляемые поля
+  duration: Int! # в минутах
+  isActive: Boolean!
+  averageEarningsPerTrip: Float!
+  averageDistancePerTrip: Float!
+  earningsPerHour: Float!
+}
+
+type DriverDocument {
+  id: UUID!
+  driverId: UUID!
+  documentType: DocumentType!
+  documentNumber: String!
+  issueDate: Time!
+  expiryDate: Time!
+  fileUrl: String!
+  status: VerificationStatus!
+  verifiedBy: String
+  verifiedAt: Time
+  rejectionReason: String
+  createdAt: Time!
+  updatedAt: Time!
+  
+  # Связанные объекты
+  driver: Driver!
+  
+  # Вычисляемые поля
+  isExpired: Boolean!
+  isVerified: Boolean!
+  daysUntilExpiry: Int!
+}
+
+# Статистика и аналитика
+type RatingStats {
+  driverId: UUID!
+  averageRating: Float!
+  totalRatings: Int!
+  ratingDistribution: RatingDistribution!
+  criteriaAverages: CriteriaAverages
+  lastRatingDate: Time
+  percentile95: Float!
+  percentile90: Float!
+  lastUpdated: Time!
+}
+
+type RatingDistribution {
+  one: Int!
+  two: Int!
+  three: Int!
+  four: Int!
+  five: Int!
+}
+
+type LocationStats {
+  totalPoints: Int!
+  distanceTraveled: Float!
+  averageSpeed: Float!
+  maxSpeed: Float!
+  timeSpan: Int! # в минутах
+}
+
+type ShiftStats {
+  totalShifts: Int!
+  activeShifts: Int!
+  completedShifts: Int!
+  totalHours: Float!
+  totalEarnings: Float!
+  totalTrips: Int!
+  totalDistance: Float!
+  avgShiftDuration: Float!
+  avgShiftEarnings: Float!
+  avgHourlyRate: Float!
+}
+
+# Вспомогательные типы
+type Location {
+  latitude: Float!
+  longitude: Float!
+  address: String
+}
+
+type GeoBounds {
+  northEast: Location!
+  southWest: Location!
+}
+
+# Скалярные типы-обертки
+scalar Metadata
+scalar CriteriaScores
+scalar CriteriaAverages
+
+# Пагинация
+type PageInfo {
+  hasMore: Boolean!
+  total: Int!
+  limit: Int!
+  offset: Int!
+}
+
+# Результаты с пагинацией
+type DriversConnection {
+  drivers: [Driver!]!
+  pageInfo: PageInfo!
+}
+
+type LocationsConnection {
+  locations: [DriverLocation!]!
+  pageInfo: PageInfo!
+}
+
+type RatingsConnection {
+  ratings: [DriverRating!]!
+  pageInfo: PageInfo!
+}
+
+type ShiftsConnection {
+  shifts: [DriverShift!]!
+  pageInfo: PageInfo!
+}
+
+# Входные типы для фильтров
+input DriverFilters {
+  status: [Status!]
+  minRating: Float
+  maxRating: Float
+  city: String
+  createdAfter: Time
+  createdBefore: Time
+  sortBy: String
+  sortDirection: SortDirection
+}
+
+input LocationFilters {
+  driverId: UUID
+  from: Time
+  to: Time
+  bounds: GeoBoundsInput
+  minSpeed: Float
+  maxSpeed: Float
+}
+
+input RatingFilters {
+  driverId: UUID
+  customerId: UUID
+  orderId: UUID
+  ratingType: [RatingType!]
+  minRating: Int
+  maxRating: Int
+  isVerified: Boolean
+  from: Time
+  to: Time
+  sortBy: String
+  sortDirection: SortDirection
+}
+
+input ShiftFilters {
+  driverId: UUID
+  vehicleId: UUID
+  status: [ShiftStatus!]
+  from: Time
+  to: Time
+  minEarnings: Float
+  maxEarnings: Float
+  minTrips: Int
+  maxTrips: Int
+  sortBy: String
+  sortDirection: SortDirection
+}
+
+input DocumentFilters {
+  driverId: UUID
+  documentType: [DocumentType!]
+  status: [VerificationStatus!]
+  expiringInDays: Int
+  expired: Boolean
+}
+
+enum SortDirection {
+  ASC
+  DESC
+}
+
+# Входные типы для создания/обновления
+input CreateDriverInput {
+  phone: String!
+  email: String!
+  firstName: String!
+  lastName: String!
+  middleName: String
+  birthDate: Time!
+  passportSeries: String!
+  passportNumber: String!
+  licenseNumber: String!
+  licenseExpiry: Time!
+}
+
+input UpdateDriverInput {
+  email: String
+  firstName: String
+  lastName: String
+  middleName: String
+  birthDate: Time
+  passportSeries: String
+  passportNumber: String
+  licenseExpiry: Time
+}
+
+input LocationUpdateInput {
+  latitude: Float!
+  longitude: Float!
+  altitude: Float
+  accuracy: Float
+  speed: Float
+  bearing: Float
+  timestamp: Time
+}
+
+input RatingInput {
+  rating: Int!
+  comment: String
+  criteriaScores: CriteriaScoresInput
+  isAnonymous: Boolean
+}
+
+input CriteriaScoresInput {
+  cleanliness: Int
+  driving: Int
+  punctuality: Int
+  politeness: Int
+  navigation: Int
+}
+
+input GeoBoundsInput {
+  northEast: LocationInput!
+  southWest: LocationInput!
+}
+
+input LocationInput {
+  latitude: Float!
+  longitude: Float!
+  address: String
+}
+
+input ShiftStartInput {
+  vehicleId: UUID
+  latitude: Float
+  longitude: Float
+  notes: String
+}
+
+input ShiftEndInput {
+  latitude: Float
+  longitude: Float
+  notes: String
+}
+
+input DocumentUploadInput {
+  documentType: DocumentType!
+  documentNumber: String!
+  issueDate: Time!
+  expiryDate: Time!
+}
+
+input DocumentVerificationInput {
+  status: VerificationStatus!
+  rejectionReason: String
+  notes: String
+}
+
+# Корневые типы
+type Query {
+  # Водители
+  driver(id: UUID!): Driver
+  drivers(
+    filters: DriverFilters
+    limit: Int = 20
+    offset: Int = 0
+  ): DriversConnection!
+  
+  activeDrivers: [Driver!]!
+  
+  driverByPhone(phone: String!): Driver
+  driverByEmail(email: String!): Driver
+  
+  # Местоположения
+  driverLocation(id: UUID!): DriverLocation
+  driverLocations(
+    filters: LocationFilters!
+    limit: Int = 100
+    offset: Int = 0
+  ): LocationsConnection!
+  
+  nearbyDrivers(
+    latitude: Float!
+    longitude: Float!
+    radiusKm: Float = 5.0
+    limit: Int = 10
+  ): [Driver!]!
+  
+  # Рейтинги
+  driverRating(id: UUID!): DriverRating
+  driverRatings(
+    filters: RatingFilters!
+    limit: Int = 50
+    offset: Int = 0
+  ): RatingsConnection!
+  
+  driverRatingStats(driverId: UUID!): RatingStats
+  
+  # Смены
+  driverShift(id: UUID!): DriverShift
+  driverShifts(
+    filters: ShiftFilters!
+    limit: Int = 50
+    offset: Int = 0
+  ): ShiftsConnection!
+  
+  activeShifts: [DriverShift!]!
+  
+  # Документы
+  driverDocument(id: UUID!): DriverDocument
+  driverDocuments(
+    filters: DocumentFilters!
+    limit: Int = 100
+    offset: Int = 0
+  ): [DriverDocument!]!
+  
+  # Статистика
+  locationStats(
+    driverId: UUID!
+    from: Time
+    to: Time
+  ): LocationStats
+  
+  shiftStats(
+    driverId: UUID
+    from: Time
+    to: Time
+  ): ShiftStats!
+}
+
+type Mutation {
+  # Водители
+  createDriver(input: CreateDriverInput!): Driver!
+  updateDriver(id: UUID!, input: UpdateDriverInput!): Driver!
+  deleteDriver(id: UUID!): Boolean!
+  changeDriverStatus(id: UUID!, status: Status!): Driver!
+  
+  # Местоположения
+  updateDriverLocation(
+    driverId: UUID!
+    input: LocationUpdateInput!
+  ): DriverLocation!
+  
+  batchUpdateDriverLocations(
+    driverId: UUID!
+    locations: [LocationUpdateInput!]!
+  ): [DriverLocation!]!
+  
+  # Рейтинги
+  addDriverRating(
+    driverId: UUID!
+    orderId: UUID
+    customerId: UUID
+    input: RatingInput!
+  ): DriverRating!
+  
+  verifyRating(id: UUID!): DriverRating!
+  
+  # Смены
+  startShift(
+    driverId: UUID!
+    input: ShiftStartInput
+  ): DriverShift!
+  
+  endShift(
+    driverId: UUID!
+    input: ShiftEndInput
+  ): DriverShift!
+  
+  suspendShift(driverId: UUID!): DriverShift!
+  resumeShift(driverId: UUID!): DriverShift!
+  cancelShift(driverId: UUID!): DriverShift!
+  
+  # Документы
+  uploadDocument(
+    driverId: UUID!
+    input: DocumentUploadInput!
+    file: String! # Base64 encoded file or file URL
+  ): DriverDocument!
+  
+  verifyDocument(
+    id: UUID!
+    input: DocumentVerificationInput!
+  ): DriverDocument!
+}
+
+# Подписки (для real-time обновлений)
+type Subscription {
+  driverLocationUpdated(driverId: UUID!): DriverLocation!
+  driverStatusChanged(driverId: UUID!): Driver!
+  shiftUpdated(driverId: UUID!): DriverShift!
+  newRating(driverId: UUID!): DriverRating!
+}
