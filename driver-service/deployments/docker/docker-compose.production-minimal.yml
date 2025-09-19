@@ -1,5 +1,8 @@
 version: '3.8'
 
+# Минимальная production конфигурация без Prometheus/Grafana
+# Для случаев, когда внешние файлы недоступны
+
 services:
   driver-service:
     image: registry.starline.ru/crm-driver-service:latest
@@ -17,32 +20,32 @@ services:
       - DRIVER_SERVICE_REDIS_PORT=6379
       - DRIVER_SERVICE_NATS_URL=nats://nats:4222
       - DRIVER_SERVICE_SERVER_ENVIRONMENT=production
-      - DRIVER_SERVICE_LOGGER_LEVEL=info
+      - DRIVER_SERVICE_LOGGER_LEVEL=warn
       - DRIVER_SERVICE_LOGGER_FORMAT=json
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
-        delay: 10s
-        max_attempts: 5
+        delay: 15s
+        max_attempts: 3
       update_config:
         parallelism: 1
-        delay: 30s
+        delay: 60s
         failure_action: rollback
         order: start-first
       resources:
         limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
           memory: 512M
           cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
     networks:
       - driver-service-network
 
@@ -61,24 +64,24 @@ services:
       replicas: 1
       restart_policy:
         condition: on-failure
-        delay: 5s
-        max_attempts: 3
+        delay: 10s
+        max_attempts: 5
       placement:
         constraints:
           - node.role == manager
       resources:
         limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
           memory: 1G
           cpus: '1.0'
-        reservations:
-          memory: 512M
-          cpus: '0.5'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U driver_service -d driver_service"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 5
+      start_period: 60s
     networks:
       - driver-service-network
 
@@ -88,23 +91,26 @@ services:
       - "6381:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
+        delay: 5s
+        max_attempts: 3
       resources:
         limits:
-          memory: 512M
+          memory: 1G
           cpus: '0.5'
         reservations:
-          memory: 256M
+          memory: 512M
           cpus: '0.25'
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
     networks:
       - driver-service-network
 
@@ -120,64 +126,21 @@ services:
       replicas: 1
       restart_policy:
         condition: on-failure
+        delay: 5s
+        max_attempts: 3
       resources:
         limits:
-          memory: 256M
-          cpus: '0.25'
-        reservations:
-          memory: 128M
-          cpus: '0.1'
-    networks:
-      - driver-service-network
-
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-      - '--web.enable-admin-api'
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-      resources:
-        limits:
-          memory: 1G
+          memory: 512M
           cpus: '0.5'
         reservations:
-          memory: 512M
-          cpus: '0.25'
-    networks:
-      - driver-service-network
-
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-    volumes:
-      - grafana_data:/var/lib/grafana
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.25'
-        reservations:
           memory: 256M
-          cpus: '0.1'
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/varz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - driver-service-network
 
@@ -187,10 +150,6 @@ volumes:
   redis_data:
     driver: local
   nats_data:
-    driver: local
-  prometheus_data:
-    driver: local
-  grafana_data:
     driver: local
 
 networks:
