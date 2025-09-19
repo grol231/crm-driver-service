@@ -338,6 +338,20 @@ docker build -f deployments/docker/Dockerfile -t driver-service:latest .
 docker run -p 8001:8001 -e DATABASE_HOST=host.docker.internal driver-service:latest
 ```
 
+### Portainer
+
+```bash
+# Для развертывания в Portainer используйте специальную конфигурацию
+# Файл: deployments/docker/docker-compose.portainer.yml
+
+# Основные отличия от обычного docker-compose:
+# - Убраны unsupported опции (build, container_name, restart)
+# - Добавлены health checks
+# - Упрощена конфигурация volumes
+```
+
+Подробная инструкция: [deployments/PORTAINER.md](./deployments/PORTAINER.md)
+
 ## Разработка
 
 ### Структура проекта

@@ -3,11 +3,10 @@ version: '3.8'
 services:
   driver-service:
     image: registry.starline.ru/crm-driver-service:latest
-    container_name: driver-service
     ports:
-      - "8001:8001"  # HTTP API
-      - "9001:9001"  # gRPC API
-      - "9002:9002"  # Metrics
+      - "8001:8001"
+      - "9001:9001"
+      - "9002:9002"
     environment:
       - DRIVER_SERVICE_DATABASE_HOST=postgres
       - DRIVER_SERVICE_DATABASE_PORT=5432
@@ -17,19 +16,20 @@ services:
       - DRIVER_SERVICE_REDIS_HOST=redis
       - DRIVER_SERVICE_REDIS_PORT=6379
       - DRIVER_SERVICE_NATS_URL=nats://nats:4222
-      - DRIVER_SERVICE_SERVER_ENVIRONMENT=development
+      - DRIVER_SERVICE_SERVER_ENVIRONMENT=production
       - DRIVER_SERVICE_LOGGER_LEVEL=info
-    depends_on:
-      - postgres
-      - redis
-      - nats
-    restart: unless-stopped
+      - DRIVER_SERVICE_LOGGER_FORMAT=json
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     networks:
       - driver-service-network
 
   postgres:
     image: postgres:15-alpine
-    container_name: driver-service-postgres
     environment:
       POSTGRES_DB: driver_service
       POSTGRES_USER: driver_service
@@ -39,7 +39,6 @@ services:
       - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U driver_service -d driver_service"]
       interval: 10s
@@ -50,7 +49,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: driver-service-redis
     ports:
       - "6381:6379"
     volumes:
@@ -66,47 +64,12 @@ services:
 
   nats:
     image: nats:2.10-alpine
-    container_name: driver-service-nats
     ports:
-      - "4222:4222"  # Client connections
-      - "8222:8222"  # HTTP management
+      - "4222:4222"
+      - "8222:8222"
     command: ["-js", "-m", "8222"]
     volumes:
       - nats_data:/data
-    networks:
-      - driver-service-network
-
-  # Monitoring
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: driver-service-prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    networks:
-      - driver-service-network
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: driver-service-grafana
-    ports:
-      - "3000:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana/datasources:/etc/grafana/provisioning/datasources
-      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
     networks:
       - driver-service-network
 
@@ -114,8 +77,6 @@ volumes:
   postgres_data:
   redis_data:
   nats_data:
-  prometheus_data:
-  grafana_data:
 
 networks:
   driver-service-network:
